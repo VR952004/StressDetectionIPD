@@ -29,4 +29,4 @@ def LSTM_predict(text):
     emotion_labels = ['anger', 'fear', 'joy', 'love', 'sadness', 'surprise']
     return emotion_labels[pred_class]
 
-print(LSTM_predict('I am scared of death.'))
+print(LSTM_predict('Today is a bright sunny morning. I feel like going for a walk. ' ))
