@@ -11,8 +11,8 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 tf.get_logger().setLevel(logging.ERROR)
 warnings.filterwarnings('ignore')
 
-model=keras.models.load_model('C:/Users/Dell/Desktop/programmin/StressDetectionIPD/Emotions_using_NLP/EmotionNLP_LSTM.h5')
-tokenizer_path='C:/Users/Dell/Desktop/programmin/StressDetectionIPD/Emotions_using_NLP/tokenizer.json'
+model=keras.models.load_model('app/EmotionNLP_LSTM.h5')
+tokenizer_path='app/tokenizer.json'
 
 with open(tokenizer_path, 'r') as file:
     tokenizer_json = file.read()
@@ -28,5 +28,3 @@ def LSTM_predict(text):
 
     emotion_labels = ['anger', 'fear', 'joy', 'love', 'sadness', 'surprise']
     return emotion_labels[pred_class]
-
-print(LSTM_predict('Today is a bright sunny morning. I feel like going for a walk. ' ))

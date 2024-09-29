@@ -1,4 +1,4 @@
-from prediction_model import PredictStress
+from app.prediction_model import PredictStress
 from pydantic import BaseModel
 from fastapi import FastAPI
 
