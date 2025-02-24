@@ -3,6 +3,25 @@ import { Bot, Send, User, Sparkles, Heart, Shield, MessageSquare, Moon, Sun, Sti
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+function summarizeTip(line: string): string {
+  return line.trim();
+}
+
+function extractTips(text: string): string[] {
+  const lines = text.split('\n');
+  const tipsSet = new Set<string>();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      let bullet = trimmed.replace(/^[-*]\s+/, '');
+      bullet = summarizeTip(bullet);
+      tipsSet.add(bullet);
+    }
+  }
+  return Array.from(tipsSet);
+}
+
 interface Note {
   id: string;
   content: string;
@@ -10,51 +29,46 @@ interface Note {
 }
 
 function App() {
+  // Initial chat messages
   const [messages, setMessages] = useState<Array<{ text: string; isUser: boolean }>>([
     { text: "Hi, I'm Alora! I'm here to help you manage stress. How are you feeling today?", isUser: false }
   ]);
+
   const [input, setInput] = useState('');
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
-      return document.documentElement.classList.contains('dark')
+      return document.documentElement.classList.contains('dark');
     }
-    return false
+    return false;
   });
+
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-  const [notes, setNotes] = useState<Note[]>([
-    {
-      id: '1',
-      content: 'Take deep breaths when feeling overwhelmed',
-      timestamp: new Date().toLocaleString()
-    },
-    {
-      id: '2',
-      content: 'Practice mindfulness for 5 minutes daily',
-      timestamp: new Date().toLocaleString()
-    }
-  ]);
+
+  // Start with no placeholder tips
+  const [notes, setNotes] = useState<Note[]>([]);
+
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
   useEffect(() => {
     if (isDark) {
-      document.documentElement.classList.add('dark')
+      document.documentElement.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark')
+      document.documentElement.classList.remove('dark');
     }
   }, [isDark]);
 
-  // Utility to add a note
+  // Add a new note (with guaranteed unique ID)
   const addNote = (content: string) => {
     const newNote: Note = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       content,
       timestamp: new Date().toLocaleString()
     };
     setNotes(prev => [newNote, ...prev]);
   };
 
-  // Delete a note by ID
+  // Delete a note
   const deleteNote = (id: string) => {
     setNotes(prev => prev.filter(note => note.id !== id));
   };
@@ -65,14 +79,16 @@ function App() {
     setEditContent(note.content);
   };
 
-  // Save note edit
+  // Save an edited note
   const saveEdit = (id: string) => {
     if (editContent.trim()) {
-      setNotes(prev => prev.map(note =>
-        note.id === id
-          ? { ...note, content: editContent.trim(), timestamp: new Date().toLocaleString() + ' (edited)' }
-          : note
-      ));
+      setNotes(prev =>
+        prev.map(note =>
+          note.id === id
+            ? { ...note, content: editContent.trim(), timestamp: new Date().toLocaleString() + ' (edited)' }
+            : note
+        )
+      );
     }
     setEditingNoteId(null);
     setEditContent('');
@@ -84,18 +100,18 @@ function App() {
     setEditContent('');
   };
 
-  // Updated handleSubmit to call the integration API
+  // Handle user input -> integration API call -> bot response
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // Add the user's message to the chat
+    // 1) Add user's message to chat
     setMessages(prev => [...prev, { text: input, isUser: true }]);
     const userMessage = input;
     setInput('');
 
     try {
-      // Call the integration API
+      // 2) Call integration API
       const response = await fetch("http://localhost:8001/process_message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,7 +125,7 @@ function App() {
       const data = await response.json();
       let { bot_response, predicted_emotion } = data;
 
-      // Trim and remove leading/trailing quotes if they exist
+      // 3) Clean up the bot response
       bot_response = bot_response.trim();
       if (
         (bot_response.startsWith('"') && bot_response.endsWith('"')) ||
@@ -118,14 +134,18 @@ function App() {
         bot_response = bot_response.slice(1, -1);
       }
 
-      // Add the bot's response to the chat
+      // 4) Add bot's response to the chat
       setMessages(prev => [...prev, { text: bot_response, isUser: false }]);
 
-      // (Optional) Use the predicted emotion if needed
-      // addNote(`Detected emotion: ${predicted_emotion}`);
+      // 5) Extract bullet points -> Summaries -> Add them as notes
+      const tips = extractTips(bot_response);
+      tips.forEach(tip => addNote(tip));
+
+      // (Optional) Use predicted_emotion if needed
+      // addNote(`Emotion: ${predicted_emotion}`);
 
     } catch (error: any) {
-      // In case of error, display a fallback message
+      // 6) Error handling
       setMessages(prev => [...prev, { text: "Error: " + error.message, isUser: false }]);
     }
   };
@@ -180,11 +200,9 @@ function App() {
         <div className="max-w-5xl mx-auto">
           {/* Hero Section */}
           <section className="text-center mb-10">
-            {/* Hero Title */}
             <h2 className="text-4xl font-bold text-gray-800 dark:text-white mb-4">
               Alora
             </h2>
-            {/* Hero Subtext */}
             <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">
               Your Personal Stress Management Assistant
             </p>
@@ -204,7 +222,7 @@ function App() {
                         message.isUser ? 'flex-row-reverse' : ''
                       }`}
                     >
-                      {/* Keep the icon from shrinking */}
+                      {/* Chat Icon */}
                       <div
                         className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${
                           message.isUser
@@ -219,7 +237,7 @@ function App() {
                         )}
                       </div>
 
-                      {/* Render Markdown with extra spacing for paragraphs, lists, etc. */}
+                      {/* Chat Bubble */}
                       <div
                         className={`rounded-2xl px-4 py-2 ${
                           message.isUser
@@ -366,10 +384,12 @@ function App() {
               <X className="w-5 h-5" />
             </button>
           </div>
+
           <div className="max-h-96 overflow-y-auto">
             {notes.map(note => (
               <div key={note.id} className="p-4 border-b border-gray-200 dark:border-gray-700">
                 {editingNoteId === note.id ? (
+                  // Editing mode
                   <div className="space-y-2">
                     <textarea
                       value={editContent}
@@ -396,10 +416,18 @@ function App() {
                     </div>
                   </div>
                 ) : (
+                  // Viewing mode
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <p className="text-gray-800 dark:text-gray-200 text-sm">{note.content}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{note.timestamp}</p>
+                      {/* Display note content as Markdown with dynamic text color */}
+                      <div className="text-gray-800 dark:text-gray-200 text-sm">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {note.content}
+                        </ReactMarkdown>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {note.timestamp}
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -422,9 +450,10 @@ function App() {
               </div>
             ))}
           </div>
+
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
             <button
-              onClick={() => addNote("New advice from Alora")}
+              onClick={() => addNote("Stay hydrated and take breaks regularly!")}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors"
             >
               <Plus className="w-4 h-4" />
