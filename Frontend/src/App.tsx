@@ -50,6 +50,9 @@ function App() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
+  // Hardcoded stress value (0..5) for demo
+  const [stressValue, setStressValue] = useState<number>(4.4);
+
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -58,7 +61,7 @@ function App() {
     }
   }, [isDark]);
 
-  // Add a new note (with guaranteed unique ID)
+  // Add a new note
   const addNote = (content: string) => {
     const newNote: Note = {
       id: crypto.randomUUID(),
@@ -100,18 +103,62 @@ function App() {
     setEditContent('');
   };
 
-  // Handle user input -> integration API call -> bot response
+  // Stress Condition
+  const getStressCondition = (val: number) => {
+    if (val < 1) return "No stress";
+    if (val < 2) return "Mild stress";
+    if (val < 3) return "Moderate stress";
+    if (val < 4) return "High stress";
+    return "Extreme stress";
+  };
+
+  // Map stress [0..5] to hue [120..0] (green->red)
+  const getStressColor = (val: number) => {
+    const hue = 120 - (val * 24);
+    return `hsl(${hue}, 100%, 50%)`;
+  };
+
+  // Donut calculation
+  const percent = Math.min(Math.max((stressValue / 5) * 100, 0), 100);
+  const gaugeColor = getStressColor(stressValue);
+
+  // Outer ring smaller and thinner
+  const donutStyle: React.CSSProperties = {
+    background: `conic-gradient(${gaugeColor} 0% ${percent}%, #444 ${percent}% 100%)`,
+    borderRadius: '50%',
+    width: '60px',
+    height: '60px',
+    position: 'relative'
+  };
+
+  // Donut hole smaller => thinner ring
+  const donutHoleStyle: React.CSSProperties = {
+    background: isDark ? '#1f2937' : '#ffffff',
+    borderRadius: '50%',
+    width: '44px',
+    height: '44px',
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 'bold',
+    // Increase font size
+    fontSize: '1.2rem',
+    color: isDark ? '#fff' : '#000'
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // 1) Add user's message to chat
     setMessages(prev => [...prev, { text: input, isUser: true }]);
     const userMessage = input;
     setInput('');
 
     try {
-      // 2) Call integration API
       const response = await fetch("http://localhost:8001/process_message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -123,9 +170,8 @@ function App() {
       }
 
       const data = await response.json();
-      let { bot_response, predicted_emotion } = data;
+      let { bot_response } = data;
 
-      // 3) Clean up the bot response
       bot_response = bot_response.trim();
       if (
         (bot_response.startsWith('"') && bot_response.endsWith('"')) ||
@@ -134,18 +180,15 @@ function App() {
         bot_response = bot_response.slice(1, -1);
       }
 
-      // 4) Add bot's response to the chat
       setMessages(prev => [...prev, { text: bot_response, isUser: false }]);
 
-      // 5) Extract bullet points -> Summaries -> Add them as notes
       const tips = extractTips(bot_response);
       tips.forEach(tip => addNote(tip));
 
-      // (Optional) Use predicted_emotion if needed
-      // addNote(`Emotion: ${predicted_emotion}`);
+      // If the API returns a stress_value, you can do:
+      // setStressValue(data.stress_value);
 
     } catch (error: any) {
-      // 6) Error handling
       setMessages(prev => [...prev, { text: "Error: " + error.message, isUser: false }]);
     }
   };
@@ -196,7 +239,8 @@ function App() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
+      {/* Main container with left padding to shift chat interface */}
+      <main className="container mx-auto px-4 py-6 pl-24">
         <div className="max-w-5xl mx-auto">
           {/* Hero Section */}
           <section className="text-center mb-10">
@@ -389,7 +433,6 @@ function App() {
             {notes.map(note => (
               <div key={note.id} className="p-4 border-b border-gray-200 dark:border-gray-700">
                 {editingNoteId === note.id ? (
-                  // Editing mode
                   <div className="space-y-2">
                     <textarea
                       value={editContent}
@@ -416,10 +459,8 @@ function App() {
                     </div>
                   </div>
                 ) : (
-                  // Viewing mode
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      {/* Display note content as Markdown with dynamic text color */}
                       <div className="text-gray-800 dark:text-gray-200 text-sm">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {note.content}
@@ -462,6 +503,27 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* ---------------------- FLOATING STRESS DONUT ---------------------- */}
+      <div
+        className="fixed bottom-6 left-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 flex items-center gap-3
+                   text-gray-800 dark:text-gray-200"
+        style={{ width: '160px', zIndex: 60 }}
+      >
+        {/* Donut gauge */}
+        <div style={{ position: 'relative' }}>
+          <div style={donutStyle}>
+            <div style={donutHoleStyle}>
+              {stressValue.toFixed(1)}
+            </div>
+          </div>
+        </div>
+
+        {/* Stress condition text */}
+        <div className="text-sm font-semibold">
+          {getStressCondition(stressValue)}
+        </div>
+      </div>
     </div>
   )
 }

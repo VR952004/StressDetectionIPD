@@ -20,7 +20,7 @@ API_KEY = os.getenv("API_KEY")
 genai.configure(api_key=API_KEY)
 
 # Docker/ML Model settings
-ML_MODEL_DOCKER_IMAGE = os.getenv("ML_MODEL_DOCKER_IMAGE", "veer954/emotion_svc:latest")
+ML_MODEL_DOCKER_IMAGE = os.getenv("ML_MODEL_DOCKER_IMAGE", "veer954/sentiment_svc")
 ML_MODEL_HOST_PORT = int(os.getenv("ML_MODEL_HOST_PORT", "8000"))
 ML_MODEL_API_URL = f"http://localhost:{ML_MODEL_HOST_PORT}/predict_svc"
 
