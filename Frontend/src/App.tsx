@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react'
-import { Bot, Send, User, Sparkles, Heart, Shield, MessageSquare, Moon, Sun, StickyNote, X, Plus, Pencil, Check } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import React, { useState, useEffect } from 'react';
+import { Bot, Send, User, Sparkles, Heart, Shield, MessageSquare, Moon, Sun, StickyNote, X, Plus, Pencil, Check } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
+// Utility function to summarize tips
 function summarizeTip(line: string): string {
   return line.trim();
 }
 
+// Extract tips from bot response
 function extractTips(text: string): string[] {
   const lines = text.split('\n');
   const tipsSet = new Set<string>();
@@ -22,6 +24,15 @@ function extractTips(text: string): string[] {
   return Array.from(tipsSet);
 }
 
+// Define message interface with id and optional isTyping flag
+interface Message {
+  id: string;
+  text: string;
+  isUser: boolean;
+  isTyping?: boolean;
+}
+
+// Define note interface
 interface Note {
   id: string;
   content: string;
@@ -29,9 +40,13 @@ interface Note {
 }
 
 function App() {
-  // Initial chat messages
-  const [messages, setMessages] = useState<Array<{ text: string; isUser: boolean }>>([
-    { text: "Hi, I'm Alora! I'm here to help you manage stress. How are you feeling today?", isUser: false }
+  // Initial chat messages with unique IDs
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: crypto.randomUUID(),
+      text: "Hi, I'm Alora! I'm here to help you manage stress. How are you feeling today?",
+      isUser: false,
+    },
   ]);
 
   const [input, setInput] = useState('');
@@ -43,16 +58,12 @@ function App() {
   });
 
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-
-  // Start with no placeholder tips
   const [notes, setNotes] = useState<Note[]>([]);
-
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [stressValue, setStressValue] = useState<number | null>(null); // Changed to null for initial "-"
 
-  // Hardcoded stress value (0..5) for demo
-  const [stressValue, setStressValue] = useState<number>(4.4);
-
+  // Apply dark mode class to document
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -66,14 +77,14 @@ function App() {
     const newNote: Note = {
       id: crypto.randomUUID(),
       content,
-      timestamp: new Date().toLocaleString()
+      timestamp: new Date().toLocaleString(),
     };
-    setNotes(prev => [newNote, ...prev]);
+    setNotes((prev) => [newNote, ...prev]);
   };
 
   // Delete a note
   const deleteNote = (id: string) => {
-    setNotes(prev => prev.filter(note => note.id !== id));
+    setNotes((prev) => prev.filter((note) => note.id !== id));
   };
 
   // Start editing a note
@@ -85,8 +96,8 @@ function App() {
   // Save an edited note
   const saveEdit = (id: string) => {
     if (editContent.trim()) {
-      setNotes(prev =>
-        prev.map(note =>
+      setNotes((prev) =>
+        prev.map((note) =>
           note.id === id
             ? { ...note, content: editContent.trim(), timestamp: new Date().toLocaleString() + ' (edited)' }
             : note
@@ -103,7 +114,7 @@ function App() {
     setEditContent('');
   };
 
-  // Stress Condition
+  // Stress condition logic
   const getStressCondition = (val: number) => {
     if (val < 1) return "No stress";
     if (val < 2) return "Mild stress";
@@ -112,26 +123,103 @@ function App() {
     return "Extreme stress";
   };
 
-  // Map stress [0..5] to hue [120..0] (green->red)
+  // Map stress value to color
   const getStressColor = (val: number) => {
-    const hue = 120 - (val * 24);
+    const hue = 120 - val * 24;
     return `hsl(${hue}, 100%, 50%)`;
   };
 
-  // Donut calculation
-  const percent = Math.min(Math.max((stressValue / 5) * 100, 0), 100);
-  const gaugeColor = getStressColor(stressValue);
+  // Handle message submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
 
-  // Outer ring smaller and thinner
-  const donutStyle: React.CSSProperties = {
-    background: `conic-gradient(${gaugeColor} 0% ${percent}%, #444 ${percent}% 100%)`,
-    borderRadius: '50%',
-    width: '60px',
-    height: '60px',
-    position: 'relative'
+    const userMessageId = crypto.randomUUID();
+    const typingMessageId = crypto.randomUUID();
+
+    setMessages((prev) => [
+      ...prev,
+      { id: userMessageId, text: input, isUser: true },
+      { id: typingMessageId, text: 'Alora is typing...', isUser: false, isTyping: true },
+    ]);
+    setInput('');
+
+    try {
+      const response = await fetch('http://localhost:8001/process_message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const data = await response.json();
+      let bot_response = data.bot_response.trim();
+      if (
+        (bot_response.startsWith('"') && bot_response.endsWith('"')) ||
+        (bot_response.startsWith("'") && bot_response.endsWith("'"))
+      ) {
+        bot_response = bot_response.slice(1, -1);
+      }
+      const stress_level = data.stress_level;
+      console.log('Received stress_level:', stress_level); // Log for debugging
+
+      // Handle stress_level robustly
+      if (stress_level != null) {
+        const parsedStress = typeof stress_level === 'number' ? stress_level : parseFloat(stress_level);
+        if (!isNaN(parsedStress)) {
+          setStressValue(parsedStress);
+        } else {
+          console.error('Invalid stress_level value:', stress_level);
+        }
+      } else {
+        console.error('stress_level not found in response');
+      }
+
+      setMessages((prev) => {
+        const index = prev.findIndex((msg) => msg.id === typingMessageId);
+        if (index !== -1) {
+          const newMessages = [...prev];
+          newMessages[index] = { id: typingMessageId, text: bot_response, isUser: false };
+          return newMessages;
+        }
+        return [...prev, { id: crypto.randomUUID(), text: bot_response, isUser: false }];
+      });
+
+      const tips = extractTips(bot_response);
+      tips.forEach((tip) => addNote(tip));
+    } catch (error: any) {
+      setMessages((prev) => {
+        const index = prev.findIndex((msg) => msg.id === typingMessageId);
+        if (index !== -1) {
+          const newMessages = [...prev];
+          newMessages[index] = { id: typingMessageId, text: 'Error: ' + error.message, isUser: false };
+          return newMessages;
+        }
+        return [...prev, { id: crypto.randomUUID(), text: 'Error: ' + error.message, isUser: false }];
+      });
+    }
   };
 
-  // Donut hole smaller => thinner ring
+  // Donut gauge styles (moved inside render to handle null case)
+  const donutStyle: React.CSSProperties = stressValue != null
+    ? {
+        background: `conic-gradient(${getStressColor(stressValue)} 0% ${(stressValue / 5) * 100}%, #444 ${(stressValue / 5) * 100}% 100%)`,
+        borderRadius: '50%',
+        width: '60px',
+        height: '60px',
+        position: 'relative',
+      }
+    : {
+        background: '#444',
+        borderRadius: '50%',
+        width: '60px',
+        height: '60px',
+        position: 'relative',
+      };
+
   const donutHoleStyle: React.CSSProperties = {
     background: isDark ? '#1f2937' : '#ffffff',
     borderRadius: '50%',
@@ -145,52 +233,8 @@ function App() {
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 'bold',
-    // Increase font size
     fontSize: '1.2rem',
-    color: isDark ? '#fff' : '#000'
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-
-    setMessages(prev => [...prev, { text: input, isUser: true }]);
-    const userMessage = input;
-    setInput('');
-
-    try {
-      const response = await fetch("http://localhost:8001/process_message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: userMessage })
-      });
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-
-      const data = await response.json();
-      let { bot_response } = data;
-
-      bot_response = bot_response.trim();
-      if (
-        (bot_response.startsWith('"') && bot_response.endsWith('"')) ||
-        (bot_response.startsWith("'") && bot_response.endsWith("'"))
-      ) {
-        bot_response = bot_response.slice(1, -1);
-      }
-
-      setMessages(prev => [...prev, { text: bot_response, isUser: false }]);
-
-      const tips = extractTips(bot_response);
-      tips.forEach(tip => addNote(tip));
-
-      // If the API returns a stress_value, you can do:
-      // setStressValue(data.stress_value);
-
-    } catch (error: any) {
-      setMessages(prev => [...prev, { text: "Error: " + error.message, isUser: false }]);
-    }
+    color: isDark ? '#fff' : '#000',
   };
 
   return (
@@ -198,7 +242,7 @@ function App() {
       className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-200"
       style={{
         backgroundSize: '400% 400%',
-        animation: 'gradient 15s ease infinite'
+        animation: 'gradient 15s ease infinite',
       }}
     >
       {/* Header */}
@@ -239,14 +283,12 @@ function App() {
         </div>
       </header>
 
-      {/* Main container with left padding to shift chat interface */}
+      {/* Main content */}
       <main className="container mx-auto px-4 py-6 pl-24">
         <div className="max-w-5xl mx-auto">
           {/* Hero Section */}
           <section className="text-center mb-10">
-            <h2 className="text-4xl font-bold text-gray-800 dark:text-white mb-4">
-              Alora
-            </h2>
+            <h2 className="text-4xl font-bold text-gray-800 dark:text-white mb-4">Alora</h2>
             <p className="text-xl text-gray-600 dark:text-gray-300 mb-6">
               Your Personal Stress Management Assistant
             </p>
@@ -256,9 +298,9 @@ function App() {
           <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden transition-colors duration-200">
             <div className="h-[500px] flex flex-col">
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map((message, index) => (
+                {messages.map((message) => (
                   <div
-                    key={index}
+                    key={message.id}
                     className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
@@ -266,7 +308,6 @@ function App() {
                         message.isUser ? 'flex-row-reverse' : ''
                       }`}
                     >
-                      {/* Chat Icon */}
                       <div
                         className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${
                           message.isUser
@@ -280,43 +321,50 @@ function App() {
                           <Bot className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                         )}
                       </div>
-
-                      {/* Chat Bubble */}
                       <div
                         className={`rounded-2xl px-4 py-2 ${
                           message.isUser
                             ? 'bg-indigo-600 text-white'
+                            : message.isTyping
+                            ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 italic'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                         }`}
                       >
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            p: ({ node, children, ...props }) => (
-                              <p className="mb-4" {...props}>
-                                {children}
-                              </p>
-                            ),
-                            ul: ({ node, children, ...props }) => (
-                              <ul className="list-disc ml-6 mb-4" {...props}>
-                                {children}
-                              </ul>
-                            ),
-                            li: ({ node, children, ...props }) => (
-                              <li className="mb-2" {...props}>
-                                {children}
-                              </li>
-                            ),
-                          }}
-                        >
-                          {message.text}
-                        </ReactMarkdown>
+                        {message.isTyping ? (
+                          'Alora is typing...'
+                        ) : (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({ node, children, ...props }) => (
+                                <p className="mb-4" {...props}>
+                                  {children}
+                                </p>
+                              ),
+                              ul: ({ node, children, ...props }) => (
+                                <ul className="list-disc ml-6 mb-4" {...props}>
+                                  {children}
+                                </ul>
+                              ),
+                              li: ({ node, children, ...props }) => (
+                                <li className="mb-2" {...props}>
+                                  {children}
+                                </li>
+                              ),
+                            }}
+                          >
+                            {message.text}
+                          </ReactMarkdown>
+                        )}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 dark:border-gray-700">
+              <form
+                onSubmit={handleSubmit}
+                className="p-4 border-t border-gray-200 dark:border-gray-700"
+              >
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -383,9 +431,7 @@ function App() {
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-2xl p-8 shadow-xl transition-colors duration-200">
               <div className="flex items-center gap-4 mb-6">
                 <MessageSquare className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-                <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
-                  About Alora
-                </h3>
+                <h3 className="text-2xl font-bold text-gray-800 dark:text-white">About Alora</h3>
               </div>
               <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
                 Alora is an advanced AI chatbot designed to help you manage stress and anxiety through
@@ -428,9 +474,8 @@ function App() {
               <X className="w-5 h-5" />
             </button>
           </div>
-
           <div className="max-h-96 overflow-y-auto">
-            {notes.map(note => (
+            {notes.map((note) => (
               <div key={note.id} className="p-4 border-b border-gray-200 dark:border-gray-700">
                 {editingNoteId === note.id ? (
                   <div className="space-y-2">
@@ -462,13 +507,9 @@ function App() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
                       <div className="text-gray-800 dark:text-gray-200 text-sm">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {note.content}
-                        </ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {note.timestamp}
-                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{note.timestamp}</p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -491,10 +532,9 @@ function App() {
               </div>
             ))}
           </div>
-
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
             <button
-              onClick={() => addNote("Stay hydrated and take breaks regularly!")}
+              onClick={() => addNote('Stay hydrated and take breaks regularly!')}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -504,28 +544,24 @@ function App() {
         </div>
       )}
 
-      {/* ---------------------- FLOATING STRESS DONUT ---------------------- */}
+      {/* Floating Stress Donut */}
       <div
-        className="fixed bottom-6 left-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 flex items-center gap-3
-                   text-gray-800 dark:text-gray-200"
+        className="fixed bottom-6 left-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 flex items-center gap-3 text-gray-800 dark:text-gray-200"
         style={{ width: '160px', zIndex: 60 }}
       >
-        {/* Donut gauge */}
         <div style={{ position: 'relative' }}>
           <div style={donutStyle}>
             <div style={donutHoleStyle}>
-              {stressValue.toFixed(1)}
+              {stressValue != null ? stressValue.toFixed(1) : '-'}
             </div>
           </div>
         </div>
-
-        {/* Stress condition text */}
         <div className="text-sm font-semibold">
-          {getStressCondition(stressValue)}
+          {stressValue != null ? getStressCondition(stressValue) : 'Awaiting input'}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
